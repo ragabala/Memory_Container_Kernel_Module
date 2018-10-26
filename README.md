@@ -1,7 +1,7 @@
 # CSC 501 Project 2: Memory Container
 
 ## Authors
-Krithika Sekhar(ksekhar)
+Krithika Sekhar(ksekhar)  
 Ragavendran Balakrishnan(rbalakr2)
 
 ## Overview
