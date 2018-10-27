@@ -44,12 +44,17 @@
 #include <linux/mutex.h>
 #include <linux/sched.h>
 #include <linux/kthread.h>
+#include <linux/list.h>
 
 
 struct Memory_list
  {
-    struct vma_area_struct *vma;
+    __u64 oid;
+    __u64 size;
+    __u64 pfn; 
     struct list_head list;
+    struct mutex lock;
+
  };
 
 struct Task_list
@@ -65,7 +70,6 @@ struct Container_list
     struct Task_list task_head;
     struct list_head list;
 };
-
 
 extern struct Container_list container_head;
 extern struct mutex list_lock;
@@ -99,6 +103,7 @@ struct Container_list *create_container(__u64 cid){
         memset(temp, 0, sizeof(struct Container_list));
         temp->cid = cid;
         INIT_LIST_HEAD(&temp->task_head.list);
+        INIT_LIST_HEAD(&temp->memory_head.list);
         mutex_lock(&list_lock);
         list_add(&(temp->list), &(container_head.list));
         mutex_unlock(&list_lock);
@@ -141,7 +146,7 @@ struct Task_list *create_task(struct Container_list* container){
 }
 
 
-struct Container *get_task_container(){
+struct Container_list *get_task_container(void){
     struct Container_list *temp;
     struct list_head *pos, *q, *pos1, *q1;
     struct Task_list *temp_task;
@@ -162,13 +167,13 @@ struct Container *get_task_container(){
 
 // This iterates through the container list and returns the
 // task matching the given tid.
-struct Memory_list *get_memory_object(struct Container_list* container, struct vm_area_struct *vma){
+struct Memory_list *get_memory_object(struct Container_list* container, __u64 oid){
     struct Memory_list *temp;
     struct list_head *pos, *q;
     list_for_each_safe(pos, q, &((container->memory_head).list)) {
         temp = list_entry(pos, struct Memory_list, list);
-        if( vma->vm_pgoff == temp->vma->vm_pgpff) {
-            printk("Memory with oid: %llu already exists ", vma->vm_pgoff);
+        if( oid == temp->oid) {
+            printk("Memory with oid: %llu already exists ", oid);
             return temp;
         }
     }
@@ -176,55 +181,78 @@ struct Memory_list *get_memory_object(struct Container_list* container, struct v
 }
 
 // memory
-struct Memory_list *create_memory_object(struct Container_list* container, struct vm_area_struct *vma){
-    struct Memory_list *temp = get_memory_object(container, vma);
-    unsigned long p_fn;
+struct Memory_list *create_memory_object(struct Container_list* container, __u64 oid){
+    struct Memory_list *temp = get_memory_object(container, oid);
     // If a memory object is not existing
     if(temp == NULL)
     {
-        printk("Creating a new Memory with offset: %d\n", vma->vm_pgoff);
-        void* kernel_memory = kmalloc(vma->end - vma->start, GFP_KERNEL);
-        memset(kernel_memory, 0, sizeof(ksize(kernel_memory)));
-        temp->data = current;
+        printk("Creating a new Memory with offset: %llu\n", oid);
+        temp = (struct Memory_list*)kmalloc(sizeof(struct Memory_list),GFP_KERNEL);
+        memset(temp, 0, sizeof(struct Memory_list));
+        temp->oid = oid;
+        temp->size=0; // The actuall size will be set in mmap
+        temp->pfn=0;
+        mutex_init(&temp->lock);
         mutex_lock(&list_lock);
-        list_add(&(temp->list), &((container->task_head).list));
+        list_add(&(temp->list), &((container->memory_head).list));
         mutex_unlock(&list_lock);
     }
-    else // If a memory object exists .. We reassign it 
-    {
-
-    }
-
     return temp;
 }
+
 
 
 
 /*********************************************************************************************/
 
 
-// initializing the pointers
-
-extern struct Container_list container;
-
 
 int memory_container_mmap(struct file *filp, struct vm_area_struct *vma)
 {
     // get the container holding the current task
-    struct Container *current_container = get_task_container();
+    struct Container_list *current_container = get_task_container();
+    struct Memory_list *memory_object = create_memory_object(current_container, vma->vm_pgoff);
+    int rc;
+    if(!memory_object->size){
+        int size = vma->vm_end - vma->vm_start;
+        void *kernel_memory = kmalloc(size, GFP_KERNEL);
+        // Physical Address is PFN offseted by the page
+        // Thus to get back pfn we unset physical address by the bits for page size. 
+        __u64 pfn = (unsigned long)virt_to_phys((void*)kernel_memory) >> PAGE_SHIFT; 
+        rc = remap_pfn_range(vma, vma->vm_start, pfn, size, vma->vm_page_prot);
+        memory_object->size = size;
+        memory_object->pfn = pfn;
+    }
+    else{ // If Memory Object already is allocated
+        rc = remap_pfn_range(vma, vma->vm_start, memory_object->pfn, memory_object->size, vma->vm_page_prot);
+    }
 
-    return 0;
+    return rc;
+
 }
 
 
 int memory_container_lock(struct memory_container_cmd __user *user_cmd)
 {
+    struct Memory_list *memory_object = NULL;    
+    struct memory_container_cmd kernel_cmd;
+    struct Container_list *current_container = get_task_container();
+    copy_from_user(&kernel_cmd, (void __user *) user_cmd, sizeof(struct memory_container_cmd));
+    memory_object =  create_memory_object(current_container,kernel_cmd.oid);
+    mutex_lock(&memory_object->lock);
     return 0;
 }
 
 
 int memory_container_unlock(struct memory_container_cmd __user *user_cmd)
 {
+    struct Memory_list *memory_object = NULL;
+    struct memory_container_cmd kernel_cmd;
+    struct Container_list *current_container = get_task_container();
+    copy_from_user(&kernel_cmd, (void __user *) user_cmd, sizeof(struct memory_container_cmd));
+    // create function also returns the already created object. 
+    memory_object = create_memory_object(current_container,kernel_cmd.oid);
+    mutex_unlock(&memory_object->lock);
     return 0;
 }
 

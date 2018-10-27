@@ -1,4 +1,4 @@
-`//////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////
 //                      North Carolina State University
 //
 //
@@ -43,6 +43,7 @@
 #include <linux/poll.h>
 #include <linux/mutex.h>
 #include <linux/sched.h>
+#include <linux/list.h>
 
 extern struct miscdevice memory_container_dev;
 
@@ -50,6 +51,7 @@ struct Memory_list
  {
     __u64 oid;
     struct list_head list;
+    struct mutex lock;
  };
 
 struct Task_list
