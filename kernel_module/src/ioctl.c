@@ -78,6 +78,7 @@ extern struct mutex list_lock;
 // This iterates through the container list and returns the
 // container matching the given cid
 struct Container_list *get_container(__u64 cid){
+    printk("Inside get create container\n");
     struct Container_list *temp;
     struct list_head *pos, *q;
     list_for_each_safe(pos, q, &container_head.list) {
@@ -95,6 +96,7 @@ struct Container_list *get_container(__u64 cid){
 // if its a new cid, create a container, set the container
 // with cid and initialize the task list and returh self.
 struct Container_list *create_container(__u64 cid){
+    printk("Inside create container\n");
     struct Container_list *temp = get_container(cid);
     if(temp == NULL )
     {
@@ -234,6 +236,7 @@ int memory_container_mmap(struct file *filp, struct vm_area_struct *vma)
 
 int memory_container_lock(struct memory_container_cmd __user *user_cmd)
 {
+    printk(KERN_INFO "Locking memory_object");
     struct Memory_list *memory_object = NULL;    
     struct memory_container_cmd kernel_cmd;
     struct Container_list *current_container = get_task_container();
@@ -246,6 +249,7 @@ int memory_container_lock(struct memory_container_cmd __user *user_cmd)
 
 int memory_container_unlock(struct memory_container_cmd __user *user_cmd)
 {
+    printk(KERN_INFO "Unlocking memory_object");
     struct Memory_list *memory_object = NULL;
     struct memory_container_cmd kernel_cmd;
     struct Container_list *current_container = get_task_container();
@@ -269,6 +273,7 @@ int memory_container_create(struct memory_container_cmd __user *user_cmd)
     struct Task_list *task =  NULL;
     struct memory_container_cmd kernel_cmd;
     copy_from_user(&kernel_cmd, (void __user *) user_cmd, sizeof(struct memory_container_cmd));
+    printk(KERN_INFO "Creating Container with cid %llu\n", kernel_cmd.cid);
     container = create_container(kernel_cmd.cid);
     task = create_task(container);
     return 0;
