@@ -46,8 +46,173 @@
 #include <linux/kthread.h>
 
 
+struct Memory_list
+ {
+    struct vma_area_struct *vma;
+    struct list_head list;
+ };
+
+struct Task_list
+{
+    struct task_struct *data;
+    struct list_head list;
+};
+
+struct Container_list
+{
+    __u64 cid;
+    struct Memory_list memory_head;
+    struct Task_list task_head;
+    struct list_head list;
+};
+
+
+extern struct Container_list container_head;
+extern struct mutex list_lock;
+
+// get_container: return the container with the given _cid
+// This iterates through the container list and returns the
+// container matching the given cid
+struct Container_list *get_container(__u64 cid){
+    struct Container_list *temp;
+    struct list_head *pos, *q;
+    list_for_each_safe(pos, q, &container_head.list) {
+        temp = list_entry(pos, struct Container_list, list);
+        if( cid == temp->cid) {
+            printk("Container with Cid: %llu already exists \n", cid);
+            return temp;
+        }
+    }
+    return NULL;
+}
+
+//create_container: Return a container with the given cid
+// if the cid exists already return the same container
+// if its a new cid, create a container, set the container
+// with cid and initialize the task list and returh self.
+struct Container_list *create_container(__u64 cid){
+    struct Container_list *temp = get_container(cid);
+    if(temp == NULL )
+    {
+        printk("Creating a new container with Cid: %llu\n", cid);
+        temp = (struct Container_list*)kmalloc(sizeof(struct Container_list),GFP_KERNEL);
+        memset(temp, 0, sizeof(struct Container_list));
+        temp->cid = cid;
+        INIT_LIST_HEAD(&temp->task_head.list);
+        mutex_lock(&list_lock);
+        list_add(&(temp->list), &(container_head.list));
+        mutex_unlock(&list_lock);
+    }
+    return temp;
+}
+
+
+// This iterates through the container list and returns the
+// task matching the given tid.
+struct Task_list *get_task(struct Container_list* container, pid_t tid){
+    struct Task_list *temp;
+    struct list_head *pos, *q;
+    list_for_each_safe(pos, q, &((container->task_head).list)) {
+        temp = list_entry(pos, struct Task_list, list);
+        if( tid == temp->data->pid) {
+            printk("task with tid: %d already exists \n", tid);
+            return temp;
+        }
+    }
+    return NULL;
+}
+
+// task: Return the current task in the given container.
+// if the current task exists already return the task
+// if its a new task, put it in the container and returh self.
+struct Task_list *create_task(struct Container_list* container){
+    struct Task_list *temp = get_task(container, current->pid);
+    if(temp == NULL)
+    {
+        printk("Creating a new Task with Tid: %d\n", current->pid);
+        temp = (struct Task_list*)kmalloc(sizeof(struct Task_list),GFP_KERNEL);
+        memset(temp, 0, sizeof(struct Task_list));
+        temp->data = current;
+        mutex_lock(&list_lock);
+        list_add(&(temp->list), &((container->task_head).list));
+        mutex_unlock(&list_lock);
+    }
+    return temp;
+}
+
+
+struct Container *get_task_container(){
+    struct Container_list *temp;
+    struct list_head *pos, *q, *pos1, *q1;
+    struct Task_list *temp_task;
+    list_for_each_safe(pos, q, &container_head.list) {
+        temp = list_entry(pos, struct Container_list, list);
+        list_for_each_safe(pos1, q1, &((temp->task_head).list)) {
+            temp_task = list_entry(pos1, struct Task_list, list);
+            if( current->pid == temp_task->data->pid) {
+                // return the container holding this task
+                return temp; 
+            }
+        }
+    }
+    return NULL;
+
+
+}
+
+// This iterates through the container list and returns the
+// task matching the given tid.
+struct Memory_list *get_memory_object(struct Container_list* container, struct vm_area_struct *vma){
+    struct Memory_list *temp;
+    struct list_head *pos, *q;
+    list_for_each_safe(pos, q, &((container->memory_head).list)) {
+        temp = list_entry(pos, struct Memory_list, list);
+        if( vma->vm_pgoff == temp->vma->vm_pgpff) {
+            printk("Memory with oid: %llu already exists ", vma->vm_pgoff);
+            return temp;
+        }
+    }
+    return NULL;
+}
+
+// memory
+struct Memory_list *create_memory_object(struct Container_list* container, struct vm_area_struct *vma){
+    struct Memory_list *temp = get_memory_object(container, vma);
+    unsigned long p_fn;
+    // If a memory object is not existing
+    if(temp == NULL)
+    {
+        printk("Creating a new Memory with offset: %d\n", vma->vm_pgoff);
+        void* kernel_memory = kmalloc(vma->end - vma->start, GFP_KERNEL);
+        memset(kernel_memory, 0, sizeof(ksize(kernel_memory)));
+        temp->data = current;
+        mutex_lock(&list_lock);
+        list_add(&(temp->list), &((container->task_head).list));
+        mutex_unlock(&list_lock);
+    }
+    else // If a memory object exists .. We reassign it 
+    {
+
+    }
+
+    return temp;
+}
+
+
+
+/*********************************************************************************************/
+
+
+// initializing the pointers
+
+extern struct Container_list container;
+
+
 int memory_container_mmap(struct file *filp, struct vm_area_struct *vma)
 {
+    // get the container holding the current task
+    struct Container *current_container = get_task_container();
+
     return 0;
 }
 
@@ -72,8 +237,16 @@ int memory_container_delete(struct memory_container_cmd __user *user_cmd)
 
 int memory_container_create(struct memory_container_cmd __user *user_cmd)
 {
+    struct Container_list *container =  NULL;
+    struct Task_list *task =  NULL;
+    struct memory_container_cmd kernel_cmd;
+    copy_from_user(&kernel_cmd, (void __user *) user_cmd, sizeof(struct memory_container_cmd));
+    container = create_container(kernel_cmd.cid);
+    task = create_task(container);
     return 0;
 }
+
+
 
 
 int memory_container_free(struct memory_container_cmd __user *user_cmd)
