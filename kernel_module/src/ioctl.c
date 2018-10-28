@@ -203,6 +203,58 @@ struct Memory_list *create_memory_object(struct Container_list* container, __u64
 }
 
 
+/*
+* Delete and free the current thread from given thread list
+*/
+void delete_current_task(struct Task_list *current_task){
+    printk("Deleting task with TID: %d",current_task->data->pid);
+    mutex_lock(&list_lock);
+    list_del(&(current_task->list));
+    mutex_unlock(&list_lock);
+    kfree(current_task);
+    printk(KERN_INFO "Deleted Task\n");
+}
+
+/*
+* Delete and free the container container from given container list
+*/
+void delete_current_container(struct Container_list *current_container){
+    printk("Deleting container with CID: %llu",current_container->cid);
+    mutex_lock(&list_lock);
+    list_del(&(current_container->list));
+    mutex_unlock(&list_lock);
+    kfree(current_container);
+    printk(KERN_INFO "Deleted Container");
+}
+
+/*
+* Delete the current task
+* If all task are deleted then delete the container
+*/
+
+void delete_task_and_container(struct Container_list *container){
+    struct Task_list* task = &(container->task_head);
+    delete_current_task(task);
+    // checking if the task list is empty
+    if(list_empty(&container->task_head.list))
+    {
+        delete_current_container(container);
+    }
+}
+
+/*
+* Delete the passed memory object 
+*/
+
+void delete_memory_object(struct Memory_list *memory_object){
+    printk("Deleting memory object with offset OID: %d",current_task->data->pid);
+    mutex_lock(&list_lock);
+    list_del(&(memory_object->list));
+    mutex_unlock(&list_lock);
+    kfree(memory_object);
+    printk(KERN_INFO "Deleted Memory Object\n");
+}
+
 
 
 /*********************************************************************************************/
@@ -263,6 +315,9 @@ int memory_container_unlock(struct memory_container_cmd __user *user_cmd)
 
 int memory_container_delete(struct memory_container_cmd __user *user_cmd)
 {
+    printk("Deleting Container\n");
+    struct Container_list* container = get_task_container();
+    delete_task_and_container(container);
     return 0;
 }
 
@@ -284,6 +339,12 @@ int memory_container_create(struct memory_container_cmd __user *user_cmd)
 
 int memory_container_free(struct memory_container_cmd __user *user_cmd)
 {
+    printk("Freeing up memory from container\n");
+    struct memory_container_cmd kernel_cmd;
+    copy_from_user(&kernel_cmd, (void __user *) user_cmd, sizeof(struct memory_container_cmd));
+    struct Container_list* container = get_task_container();
+    struct Memory_list* memory_object = get_memory_object(container, kernel_cmd.oid);
+    delete_memory_object(memory_object);
     return 0;
 }
 
