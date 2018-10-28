@@ -250,7 +250,7 @@ void delete_memory_object(struct Memory_list *memory_object){
     mutex_lock(&list_lock);
     list_del(&(memory_object->list));
     mutex_unlock(&list_lock);
-    //kfree(memory_object);
+    kfree(memory_object);
     printk(KERN_INFO "Deleted Memory Object\n");
 }
 
