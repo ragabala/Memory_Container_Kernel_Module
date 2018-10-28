@@ -175,7 +175,7 @@ struct Memory_list *get_memory_object(struct Container_list* container, __u64 oi
     list_for_each_safe(pos, q, &((container->memory_head).list)) {
         temp = list_entry(pos, struct Memory_list, list);
         if( oid == temp->oid) {
-            printk("Memory with oid: %llu already exists ", oid);
+            printk("Memory with oid: %llu already exists \n", oid);
             return temp;
         }
     }
@@ -207,7 +207,7 @@ struct Memory_list *create_memory_object(struct Container_list* container, __u64
 * Delete and free the current thread from given thread list
 */
 void delete_current_task(struct Task_list *current_task){
-    printk("Deleting task with TID: %d",current_task->data->pid);
+    printk("Deleting task with TID: %d\n",current_task->data->pid);
     mutex_lock(&list_lock);
     list_del(&(current_task->list));
     mutex_unlock(&list_lock);
@@ -219,7 +219,7 @@ void delete_current_task(struct Task_list *current_task){
 * Delete and free the container container from given container list
 */
 void delete_current_container(struct Container_list *current_container){
-    printk("Deleting container with CID: %llu",current_container->cid);
+    printk("Deleting container with CID: %llu\n",current_container->cid);
     mutex_lock(&list_lock);
     list_del(&(current_container->list));
     mutex_unlock(&list_lock);
@@ -232,11 +232,10 @@ void delete_current_container(struct Container_list *current_container){
 * If all task are deleted then delete the container
 */
 
-void delete_task_and_container(struct Container_list *container){
-    struct Task_list* task = &(container->task_head);
+void delete_task_and_container(struct Container_list *container, struct Task_list* task ){
     delete_current_task(task);
     // checking if the task list is empty
-    if(list_empty(&container->task_head.list))
+    if(list_empty(&container->task_head.list) && list_empty(&container->memory_head.list))
     {
         delete_current_container(container);
     }
@@ -247,11 +246,11 @@ void delete_task_and_container(struct Container_list *container){
 */
 
 void delete_memory_object(struct Memory_list *memory_object){
-    printk("Deleting memory object with offset OID: %d",current_task->data->pid);
+    printk("Deleting memory object with offset OID: %llu\n",memory_object->oid);
     mutex_lock(&list_lock);
     list_del(&(memory_object->list));
     mutex_unlock(&list_lock);
-    kfree(memory_object);
+    //kfree(memory_object);
     printk(KERN_INFO "Deleted Memory Object\n");
 }
 
@@ -288,7 +287,7 @@ int memory_container_mmap(struct file *filp, struct vm_area_struct *vma)
 
 int memory_container_lock(struct memory_container_cmd __user *user_cmd)
 {
-    printk(KERN_INFO "Locking memory_object");
+    printk(KERN_INFO "Locking memory_object\n");
     struct Memory_list *memory_object = NULL;    
     struct memory_container_cmd kernel_cmd;
     struct Container_list *current_container = get_task_container();
@@ -301,7 +300,7 @@ int memory_container_lock(struct memory_container_cmd __user *user_cmd)
 
 int memory_container_unlock(struct memory_container_cmd __user *user_cmd)
 {
-    printk(KERN_INFO "Unlocking memory_object");
+    printk(KERN_INFO "Unlocking memory_object\n");
     struct Memory_list *memory_object = NULL;
     struct memory_container_cmd kernel_cmd;
     struct Container_list *current_container = get_task_container();
@@ -317,7 +316,8 @@ int memory_container_delete(struct memory_container_cmd __user *user_cmd)
 {
     printk("Deleting Container\n");
     struct Container_list* container = get_task_container();
-    delete_task_and_container(container);
+    struct Task_list* task = get_task(container, current->pid);
+    delete_task_and_container(container, task);
     return 0;
 }
 
