@@ -43,8 +43,37 @@
 #include <linux/poll.h>
 #include <linux/mutex.h>
 #include <linux/sched.h>
+#include <linux/list.h>
 
 extern struct miscdevice memory_container_dev;
+
+struct Memory_list
+ {
+    __u64 oid;
+    __u64 size;
+    __u64 pfn; 
+    struct list_head list;
+    struct mutex lock;
+
+ };
+
+struct Task_list
+{
+    struct task_struct *data;
+    struct list_head list;
+};
+
+struct Container_list
+{
+    __u64 cid;
+    struct Memory_list memory_head;
+    struct Task_list task_head;
+    struct list_head list;
+};
+
+
+struct Container_list container_head;
+struct mutex list_lock;  
 
 
 int memory_container_init(void)
@@ -57,6 +86,8 @@ int memory_container_init(void)
         return ret;
     }
 
+    mutex_init(&list_lock);
+    INIT_LIST_HEAD(&container_head.list);
     printk(KERN_ERR "\"memory_container\" misc device installed\n");
     printk(KERN_ERR "\"memory_container\" version 0.1\n");
     return ret;
