@@ -53,7 +53,7 @@ struct Memory_list
     __u64 size;
     __u64 pfn; 
     struct list_head list;
-    struct mutex lock;
+
 
  };
 
@@ -69,6 +69,7 @@ struct Container_list
     struct Memory_list memory_head;
     struct Task_list task_head;
     struct list_head list;
+    struct mutex lock;
 };
 
 extern struct Container_list container_head;
@@ -106,6 +107,7 @@ struct Container_list *create_container(__u64 cid){
         temp->cid = cid;
         INIT_LIST_HEAD(&temp->task_head.list);
         INIT_LIST_HEAD(&temp->memory_head.list);
+        mutex_init(&temp->lock);
         mutex_lock(&list_lock);
         list_add(&(temp->list), &(container_head.list));
         mutex_unlock(&list_lock);
@@ -194,7 +196,6 @@ struct Memory_list *create_memory_object(struct Container_list* container, __u64
         temp->oid = oid;
         temp->size=0; // The actuall size will be set in mmap
         temp->pfn=0;
-        mutex_init(&temp->lock);
         mutex_lock(&list_lock);
         list_add(&(temp->list), &((container->memory_head).list));
         mutex_unlock(&list_lock);
@@ -288,12 +289,10 @@ int memory_container_mmap(struct file *filp, struct vm_area_struct *vma)
 int memory_container_lock(struct memory_container_cmd __user *user_cmd)
 {
     printk(KERN_INFO "Locking memory_object\n");
-    struct Memory_list *memory_object = NULL;    
     struct memory_container_cmd kernel_cmd;
     struct Container_list *current_container = get_task_container();
     copy_from_user(&kernel_cmd, (void __user *) user_cmd, sizeof(struct memory_container_cmd));
-    memory_object =  create_memory_object(current_container,kernel_cmd.oid);
-    mutex_lock(&memory_object->lock);
+    mutex_lock(&current_container->lock);
     return 0;
 }
 
@@ -301,13 +300,11 @@ int memory_container_lock(struct memory_container_cmd __user *user_cmd)
 int memory_container_unlock(struct memory_container_cmd __user *user_cmd)
 {
     printk(KERN_INFO "Unlocking memory_object\n");
-    struct Memory_list *memory_object = NULL;
     struct memory_container_cmd kernel_cmd;
     struct Container_list *current_container = get_task_container();
     copy_from_user(&kernel_cmd, (void __user *) user_cmd, sizeof(struct memory_container_cmd));
     // create function also returns the already created object. 
-    memory_object = create_memory_object(current_container,kernel_cmd.oid);
-    mutex_unlock(&memory_object->lock);
+    mutex_unlock(&current_container->lock);
     return 0;
 }
 
