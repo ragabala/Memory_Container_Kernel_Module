@@ -47,13 +47,14 @@
 
 extern struct miscdevice memory_container_dev;
 
+
 struct Memory_list
  {
     __u64 oid;
     __u64 size;
     __u64 pfn; 
     struct list_head list;
-    struct mutex lock;
+
 
  };
 
@@ -69,8 +70,8 @@ struct Container_list
     struct Memory_list memory_head;
     struct Task_list task_head;
     struct list_head list;
+    struct mutex lock;
 };
-
 
 struct Container_list container_head;
 struct mutex list_lock;  
