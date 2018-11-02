@@ -136,7 +136,7 @@ struct Task_list *create_task(struct Container_list* container){
     struct Task_list *temp = get_task(container, current->pid);
     if(temp == NULL)
     {
-        //printk("Creating a new Task with Tid: %d\n", current->pid);
+        printk("Creating a new Task with Tid: %d in container %llu \n", current->pid, container->cid);
         temp = (struct Task_list*)kmalloc(sizeof(struct Task_list),GFP_KERNEL);
         memset(temp, 0, sizeof(struct Task_list));
         temp->data = current;
@@ -173,7 +173,6 @@ struct Memory_list *get_memory_object(struct Container_list* container, __u64 oi
     list_for_each_safe(pos, q, &container->memory_head.list) {
         temp = list_entry(pos, struct Memory_list, list);
         if( oid == temp->oid) {
-            //printk("Memory with oid: %llu already exists \n", oid);
             return temp;
         }
     }
@@ -186,7 +185,7 @@ struct Memory_list *create_memory_object(struct Container_list* container, __u64
     // If a memory object is not existing
     if(temp == NULL)
     {
-        //printk("Creating a new Memory with offset: %llu\n", oid);
+        printk("Creating a new Memory Object with Oid: %llu in container %llu \n", oid, container->cid);
         temp = (struct Memory_list*)kmalloc(sizeof(struct Memory_list),GFP_KERNEL);
         memset(temp, 0, sizeof(struct Memory_list));
         temp->oid = oid;
@@ -204,26 +203,20 @@ struct Memory_list *create_memory_object(struct Container_list* container, __u64
 * Delete and free the current thread from given thread list
 */
 void delete_current_task(struct Task_list *current_task){
-    //printk("Deleting task with TID: %d\n",current_task->data->pid);
     mutex_lock(&list_lock);
     list_del(&current_task->list);
     kfree(current_task);
     mutex_unlock(&list_lock);
-    
-    //printk(KERN_INFO "Deleted Task\n");
 }
 
 /*
 * Delete and free the container container from given container list
 */
 void delete_current_container(struct Container_list *current_container){
-    //printk("Deleting container with CID: %llu\n",current_container->cid);
     mutex_lock(&list_lock);
     list_del(&current_container->list);
     kfree(current_container);
     mutex_unlock(&list_lock);
-    
-    //printk(KERN_INFO "Deleted Container");
 }
 
 /*
@@ -252,7 +245,6 @@ void delete_memory_object(struct Memory_list *memory_object){
         kfree(memory_object);
         mutex_unlock(&list_lock);
     }
-    //printk(KERN_INFO "Deleted Memory Object\n");
 }
 
 
@@ -291,7 +283,6 @@ int memory_container_mmap(struct file *filp, struct vm_area_struct *vma)
 
 int memory_container_lock(struct memory_container_cmd __user *user_cmd)
 {
-    //printk(KERN_INFO "Locking memory_object\n");
     struct Container_list *current_container = get_task_container();
     if(current_container!=NULL){
         mutex_lock(&current_container->lock);
@@ -302,7 +293,6 @@ int memory_container_lock(struct memory_container_cmd __user *user_cmd)
 
 int memory_container_unlock(struct memory_container_cmd __user *user_cmd)
 {
-    //printk(KERN_INFO "Unlocking memory_object\n");
     struct Container_list *current_container = get_task_container();
     if(current_container!=NULL){
         mutex_unlock(&current_container->lock);
@@ -313,7 +303,6 @@ int memory_container_unlock(struct memory_container_cmd __user *user_cmd)
 
 int memory_container_delete(struct memory_container_cmd __user *user_cmd)
 {
-    //printk("Deleting Container\n");
     struct Container_list* container = get_task_container();
     if(container!=NULL)
     {
@@ -329,23 +318,21 @@ int memory_container_create(struct memory_container_cmd __user *user_cmd)
     struct Container_list *container =  NULL;
     struct memory_container_cmd kernel_cmd;
     copy_from_user(&kernel_cmd, (void __user *) user_cmd, sizeof(struct memory_container_cmd));
-    //printk(KERN_INFO "Creating Container with cid %llu\n", kernel_cmd.cid);
     container = create_container(kernel_cmd.cid);
     create_task(container);
     return 0;
 }
 
 
-
-
 int memory_container_free(struct memory_container_cmd __user *user_cmd)
 {
-    //printk("Freeing up memory from container\n");
+    struct Container_list* container = NULL;
+    struct Memory_list* memory_object = NULL;
     struct memory_container_cmd kernel_cmd;
     copy_from_user(&kernel_cmd, (void __user *) user_cmd, sizeof(struct memory_container_cmd));
-    struct Container_list* container = get_task_container();
+    container = get_task_container();
     if(container != NULL){
-        struct Memory_list* memory_object = get_memory_object(container, kernel_cmd.oid);
+        memory_object = get_memory_object(container, kernel_cmd.oid);
         delete_memory_object(memory_object);
     }
     return 0;
