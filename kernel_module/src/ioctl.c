@@ -77,13 +77,11 @@ extern struct mutex list_lock;
 // This iterates through the container list and returns the
 // container matching the given cid
 struct Container_list *get_container(__u64 cid){
-    //printk("Inside get create container\n");
     struct Container_list *temp;
     struct list_head *pos, *q;
     list_for_each_safe(pos, q, &container_head.list) {
         temp = list_entry(pos, struct Container_list, list);
         if( cid == temp->cid) {
-            //printk("Container with Cid: %llu already exists \n", cid);
             return temp;
         }
     }
@@ -95,7 +93,6 @@ struct Container_list *get_container(__u64 cid){
 // if its a new cid, create a container, set the container
 // with cid and initialize the task list and returh self.
 struct Container_list *create_container(__u64 cid){
-    //printk("Inside create container\n");
     struct Container_list *temp = get_container(cid);
     if(temp == NULL )
     {
@@ -122,7 +119,6 @@ struct Task_list *get_task(struct Container_list* container, pid_t tid){
     list_for_each_safe(pos, q, &((container->task_head).list)) {
         temp = list_entry(pos, struct Task_list, list);
         if( tid == temp->data->pid) {
-            //printk("task with tid: %d already exists \n", tid);
             return temp;
         }
     }
@@ -185,7 +181,6 @@ struct Memory_list *create_memory_object(struct Container_list* container, __u64
     // If a memory object is not existing
     if(temp == NULL)
     {
-        printk("Creating a new Memory Object with Oid: %llu in container %llu \n", oid, container->cid);
         temp = (struct Memory_list*)kmalloc(sizeof(struct Memory_list),GFP_KERNEL);
         memset(temp, 0, sizeof(struct Memory_list));
         temp->oid = oid;
@@ -238,7 +233,6 @@ void delete_task_and_container(struct Container_list *container, struct Task_lis
 */
 
 void delete_memory_object(struct Memory_list *memory_object){
-    //printk("Deleting memory object with offset OID: %llu\n",memory_object->oid);
     if(memory_object != NULL){
         mutex_lock(&list_lock);
         list_del(&(memory_object->list));
