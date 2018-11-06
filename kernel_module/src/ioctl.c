@@ -257,7 +257,7 @@ int memory_container_mmap(struct file *filp, struct vm_area_struct *vma)
         int rc;
         if(!memory_object->size){
             int size = vma->vm_end - vma->vm_start;
-            void *kernel_memory = kmalloc(size, GFP_KERNEL);
+            void *kernel_memory = kcalloc(1, size, GFP_KERNEL);
             // Physical Address is PFN offseted by the page
             // Thus to get back pfn we unset physical address by the bits for page size. 
             __u64 pfn = (unsigned long)virt_to_phys((void*)kernel_memory) >> PAGE_SHIFT; 
