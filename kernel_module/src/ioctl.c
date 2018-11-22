@@ -53,8 +53,6 @@ struct Memory_list
     __u64 size;
     __u64 pfn; 
     struct list_head list;
-    struct mutex lock;
-
  };
 
 struct Task_list
@@ -69,6 +67,7 @@ struct Container_list
     struct Memory_list memory_head;
     struct Task_list task_head;
     struct list_head list;
+    struct mutex lock;
 };
 
 extern struct Container_list container_head;
@@ -78,13 +77,11 @@ extern struct mutex list_lock;
 // This iterates through the container list and returns the
 // container matching the given cid
 struct Container_list *get_container(__u64 cid){
-    printk("Inside get create container\n");
     struct Container_list *temp;
     struct list_head *pos, *q;
     list_for_each_safe(pos, q, &container_head.list) {
         temp = list_entry(pos, struct Container_list, list);
         if( cid == temp->cid) {
-            printk("Container with Cid: %llu already exists \n", cid);
             return temp;
         }
     }
@@ -96,7 +93,6 @@ struct Container_list *get_container(__u64 cid){
 // if its a new cid, create a container, set the container
 // with cid and initialize the task list and returh self.
 struct Container_list *create_container(__u64 cid){
-    printk("Inside create container\n");
     struct Container_list *temp = get_container(cid);
     if(temp == NULL )
     {
@@ -106,6 +102,7 @@ struct Container_list *create_container(__u64 cid){
         temp->cid = cid;
         INIT_LIST_HEAD(&temp->task_head.list);
         INIT_LIST_HEAD(&temp->memory_head.list);
+        mutex_init(&temp->lock);
         mutex_lock(&list_lock);
         list_add(&(temp->list), &(container_head.list));
         mutex_unlock(&list_lock);
@@ -122,7 +119,6 @@ struct Task_list *get_task(struct Container_list* container, pid_t tid){
     list_for_each_safe(pos, q, &((container->task_head).list)) {
         temp = list_entry(pos, struct Task_list, list);
         if( tid == temp->data->pid) {
-            printk("task with tid: %d already exists \n", tid);
             return temp;
         }
     }
@@ -136,7 +132,7 @@ struct Task_list *create_task(struct Container_list* container){
     struct Task_list *temp = get_task(container, current->pid);
     if(temp == NULL)
     {
-        printk("Creating a new Task with Tid: %d\n", current->pid);
+        printk("Creating a new Task with Tid: %d in container %llu \n", current->pid, container->cid);
         temp = (struct Task_list*)kmalloc(sizeof(struct Task_list),GFP_KERNEL);
         memset(temp, 0, sizeof(struct Task_list));
         temp->data = current;
@@ -154,7 +150,7 @@ struct Container_list *get_task_container(void){
     struct Task_list *temp_task;
     list_for_each_safe(pos, q, &container_head.list) {
         temp = list_entry(pos, struct Container_list, list);
-        list_for_each_safe(pos1, q1, &((temp->task_head).list)) {
+        list_for_each_safe(pos1, q1, &(temp->task_head.list)) {
             temp_task = list_entry(pos1, struct Task_list, list);
             if( current->pid == temp_task->data->pid) {
                 // return the container holding this task
@@ -163,8 +159,6 @@ struct Container_list *get_task_container(void){
         }
     }
     return NULL;
-
-
 }
 
 // This iterates through the container list and returns the
@@ -172,10 +166,9 @@ struct Container_list *get_task_container(void){
 struct Memory_list *get_memory_object(struct Container_list* container, __u64 oid){
     struct Memory_list *temp;
     struct list_head *pos, *q;
-    list_for_each_safe(pos, q, &((container->memory_head).list)) {
+    list_for_each_safe(pos, q, &container->memory_head.list) {
         temp = list_entry(pos, struct Memory_list, list);
         if( oid == temp->oid) {
-            printk("Memory with oid: %llu already exists \n", oid);
             return temp;
         }
     }
@@ -188,13 +181,11 @@ struct Memory_list *create_memory_object(struct Container_list* container, __u64
     // If a memory object is not existing
     if(temp == NULL)
     {
-        printk("Creating a new Memory with offset: %llu\n", oid);
         temp = (struct Memory_list*)kmalloc(sizeof(struct Memory_list),GFP_KERNEL);
         memset(temp, 0, sizeof(struct Memory_list));
         temp->oid = oid;
         temp->size=0; // The actuall size will be set in mmap
         temp->pfn=0;
-        mutex_init(&temp->lock);
         mutex_lock(&list_lock);
         list_add(&(temp->list), &((container->memory_head).list));
         mutex_unlock(&list_lock);
@@ -207,24 +198,20 @@ struct Memory_list *create_memory_object(struct Container_list* container, __u64
 * Delete and free the current thread from given thread list
 */
 void delete_current_task(struct Task_list *current_task){
-    printk("Deleting task with TID: %d\n",current_task->data->pid);
     mutex_lock(&list_lock);
-    list_del(&(current_task->list));
-    mutex_unlock(&list_lock);
+    list_del(&current_task->list);
     kfree(current_task);
-    printk(KERN_INFO "Deleted Task\n");
+    mutex_unlock(&list_lock);
 }
 
 /*
 * Delete and free the container container from given container list
 */
 void delete_current_container(struct Container_list *current_container){
-    printk("Deleting container with CID: %llu\n",current_container->cid);
     mutex_lock(&list_lock);
-    list_del(&(current_container->list));
-    mutex_unlock(&list_lock);
+    list_del(&current_container->list);
     kfree(current_container);
-    printk(KERN_INFO "Deleted Container");
+    mutex_unlock(&list_lock);
 }
 
 /*
@@ -246,12 +233,12 @@ void delete_task_and_container(struct Container_list *container, struct Task_lis
 */
 
 void delete_memory_object(struct Memory_list *memory_object){
-    printk("Deleting memory object with offset OID: %llu\n",memory_object->oid);
-    mutex_lock(&list_lock);
-    list_del(&(memory_object->list));
-    mutex_unlock(&list_lock);
-    //kfree(memory_object);
-    printk(KERN_INFO "Deleted Memory Object\n");
+    if(memory_object != NULL){
+        mutex_lock(&list_lock);
+        list_del(&(memory_object->list));
+        kfree(memory_object);
+        mutex_unlock(&list_lock);
+    }
 }
 
 
@@ -264,60 +251,58 @@ int memory_container_mmap(struct file *filp, struct vm_area_struct *vma)
 {
     // get the container holding the current task
     struct Container_list *current_container = get_task_container();
-    struct Memory_list *memory_object = create_memory_object(current_container, vma->vm_pgoff);
-    int rc;
-    if(!memory_object->size){
-        int size = vma->vm_end - vma->vm_start;
-        void *kernel_memory = kmalloc(size, GFP_KERNEL);
-        // Physical Address is PFN offseted by the page
-        // Thus to get back pfn we unset physical address by the bits for page size. 
-        __u64 pfn = (unsigned long)virt_to_phys((void*)kernel_memory) >> PAGE_SHIFT; 
-        rc = remap_pfn_range(vma, vma->vm_start, pfn, size, vma->vm_page_prot);
-        memory_object->size = size;
-        memory_object->pfn = pfn;
+    if(current_container != NULL)
+    {
+        struct Memory_list *memory_object = create_memory_object(current_container, vma->vm_pgoff);
+        int rc;
+        if(!memory_object->size){
+            int size = vma->vm_end - vma->vm_start;
+            void *kernel_memory = kcalloc(1, size, GFP_KERNEL);
+            // Physical Address is PFN offseted by the page
+            // Thus to get back pfn we unset physical address by the bits for page size. 
+            __u64 pfn = (unsigned long)virt_to_phys((void*)kernel_memory) >> PAGE_SHIFT; 
+            rc = remap_pfn_range(vma, vma->vm_start, pfn, size, vma->vm_page_prot);
+            memory_object->size = size;
+            memory_object->pfn = pfn;
+        }
+        else{ // If Memory Object already is allocated
+            rc = remap_pfn_range(vma, vma->vm_start, memory_object->pfn, memory_object->size, vma->vm_page_prot);
+        }
+        return rc;
     }
-    else{ // If Memory Object already is allocated
-        rc = remap_pfn_range(vma, vma->vm_start, memory_object->pfn, memory_object->size, vma->vm_page_prot);
-    }
-
-    return rc;
+    return 0;
 
 }
 
 
 int memory_container_lock(struct memory_container_cmd __user *user_cmd)
 {
-    printk(KERN_INFO "Locking memory_object\n");
-    struct Memory_list *memory_object = NULL;    
-    struct memory_container_cmd kernel_cmd;
     struct Container_list *current_container = get_task_container();
-    copy_from_user(&kernel_cmd, (void __user *) user_cmd, sizeof(struct memory_container_cmd));
-    memory_object =  create_memory_object(current_container,kernel_cmd.oid);
-    mutex_lock(&memory_object->lock);
+    if(current_container!=NULL){
+        mutex_lock(&current_container->lock);
+    }
     return 0;
 }
 
 
 int memory_container_unlock(struct memory_container_cmd __user *user_cmd)
 {
-    printk(KERN_INFO "Unlocking memory_object\n");
-    struct Memory_list *memory_object = NULL;
-    struct memory_container_cmd kernel_cmd;
     struct Container_list *current_container = get_task_container();
-    copy_from_user(&kernel_cmd, (void __user *) user_cmd, sizeof(struct memory_container_cmd));
-    // create function also returns the already created object. 
-    memory_object = create_memory_object(current_container,kernel_cmd.oid);
-    mutex_unlock(&memory_object->lock);
+    if(current_container!=NULL){
+        mutex_unlock(&current_container->lock);
+    }
     return 0;
 }
 
 
 int memory_container_delete(struct memory_container_cmd __user *user_cmd)
 {
-    printk("Deleting Container\n");
     struct Container_list* container = get_task_container();
-    struct Task_list* task = get_task(container, current->pid);
-    delete_task_and_container(container, task);
+    if(container!=NULL)
+    {
+        struct Task_list* task = get_task(container, current->pid);
+        delete_task_and_container(container, task);
+    }
     return 0;
 }
 
@@ -325,26 +310,25 @@ int memory_container_delete(struct memory_container_cmd __user *user_cmd)
 int memory_container_create(struct memory_container_cmd __user *user_cmd)
 {
     struct Container_list *container =  NULL;
-    struct Task_list *task =  NULL;
     struct memory_container_cmd kernel_cmd;
     copy_from_user(&kernel_cmd, (void __user *) user_cmd, sizeof(struct memory_container_cmd));
-    printk(KERN_INFO "Creating Container with cid %llu\n", kernel_cmd.cid);
     container = create_container(kernel_cmd.cid);
-    task = create_task(container);
+    create_task(container);
     return 0;
 }
 
 
-
-
 int memory_container_free(struct memory_container_cmd __user *user_cmd)
 {
-    printk("Freeing up memory from container\n");
+    struct Container_list* container = NULL;
+    struct Memory_list* memory_object = NULL;
     struct memory_container_cmd kernel_cmd;
     copy_from_user(&kernel_cmd, (void __user *) user_cmd, sizeof(struct memory_container_cmd));
-    struct Container_list* container = get_task_container();
-    struct Memory_list* memory_object = get_memory_object(container, kernel_cmd.oid);
-    delete_memory_object(memory_object);
+    container = get_task_container();
+    if(container != NULL){
+        memory_object = get_memory_object(container, kernel_cmd.oid);
+        delete_memory_object(memory_object);
+    }
     return 0;
 }
 
